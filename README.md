@@ -63,3 +63,137 @@ The voting application only accepts one vote per client browser. It does not reg
 This isn't an example of a properly architected perfectly designed distributed app... it's just a simple
 example of the various types of pieces and languages you might see (queues, persistent data, etc), and how to
 deal with them in Docker at a basic level.
+
+# 🚀 End-to-End Azure DevOps GitOps Pipeline with AKS & ArgoCD
+
+This project demonstrates a production-grade CI/CD workflow built on GitOps practices, using Azure DevOps Pipelines, Azure Kubernetes Service (AKS), Azure Container Registry (ACR), and ArgoCD. It automates everything from Docker image builds to Kubernetes deployments.
+
+---
+
+## 📚 Contents
+- [Introduction](#-1-introduction)
+- [Architecture Summary](#-2-architecture-summary)
+- [Technology Overview](#-3-technology-overview)
+- [Infrastructure Provisioning](#-4-infrastructure-provisioning)
+- [Azure DevOps Pipeline Setup](#-5-azure-devops-pipeline-setup)
+- [GitOps with ArgoCD](#-6-gitops-with-argocd)
+- [Deployment Workflow](#-7-deployment-workflow)
+- [Application Access](#-8-accessing-the-services)
+- [Highlights](#-9-key-highlights)
+
+---
+
+## 🔰 1. Introduction
+
+This repository contains a complete CI/CD solution for a microservices-based voting application. The goal is to ensure that:
+
+- Code changes automatically build new Docker images  
+- Updated images are pushed to ACR  
+- Kubernetes manifests are patched with the latest tags  
+- ArgoCD detects changes and syncs them into the AKS cluster  
+
+This follows the GitOps philosophy, where Git serves as the source of truth for Kubernetes state.
+
+The application is derived from the classic **Docker Voting App**.
+
+---
+
+## 🧱 2. Architecture Summary
+
+**High-level CI/CD flow:**
+
+1. Developer pushes code → Azure DevOps pipeline triggers  
+2. Pipeline builds Docker image  
+3. Image is pushed to Azure Container Registry  
+4. Kubernetes manifests are updated with the new image tag  
+5. ArgoCD automatically syncs the cluster with Git  
+
+---
+
+## 🛠️ 3. Technology Overview
+
+| Category                 | Tool/Service                         |
+|-------------------------|---------------------------------------|
+| Cloud Platform          | Microsoft Azure                       |
+| Kubernetes              | Azure Kubernetes Service (AKS)        |
+| Container Registry      | Azure Container Registry (ACR)        |
+| CI/CD Engine            | Azure DevOps Pipelines                |
+| GitOps Controller       | ArgoCD                                |
+| Container Runtime       | Docker                                |
+| Databases Used          | PostgreSQL, Redis                     |
+
+---
+
+## ☁️ 4. Infrastructure Provisioning
+
+### **1. Create Resource Group**
+```bash
+az group create --name votingapp-rg --location eastus
+```
+
+### **2. Create ACR**
+```bash
+az acr create \
+  --resource-group votingapp-rg \
+  --name VotingAppRegistry \
+  --sku Basic
+```
+
+### **3. Deploy AKS Cluster**
+```bash
+az aks create \
+  --resource-group votingapp-rg \
+  --name azuredevops \
+  --node-count 2 \
+  --enable-addons monitoring \
+  --generate-ssh-keys
+```
+
+### **4. Attach ACR to AKS**
+```bash
+az aks update \
+  --resource-group votingapp-rg \
+  --name azuredevops \
+  --attach-acr VotingAppRegistry
+```
+
+### **5. Configure kubectl Context**
+```bash
+az aks get-credentials \
+  --resource-group votingapp-rg \
+  --name azuredevops \
+  --overwrite-existing
+```
+
+Verify:
+```bash
+kubectl get nodes
+```
+
+### **6. Open NodePort Access (NSG Rules)**
+
+Get NSG:
+```bash
+NSG_NAME=$(az network nsg list --resource-group MC_votingapp-rg_azuredevops_eastus --query "[0].name" -o tsv)
+```
+Allow ports:
+
+# Vote service - 31000
+az network nsg rule create \
+  --resource-group MC_votingapp-rg_azuredevops_eastus \
+  --nsg-name $NSG_NAME \
+  --name AllowVoteNodePort \
+  --priority 100 \
+  --destination-port-ranges 31000 \
+  --access Allow \
+  --protocol Tcp
+
+# Result service - 31001
+az network nsg rule create \
+  --resource-group MC_votingapp-rg_azuredevops_eastus \
+  --nsg-name $NSG_NAME \
+  --name AllowResultNodePort \
+  --priority 101 \
+  --destination-port-ranges 31001 \
+  --access Allow \
+  --protocol Tcp
